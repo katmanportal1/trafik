@@ -46,8 +46,8 @@ Katman/
 ### 1. Repoyu Klonlayın
 
 ```bash
-git clone https://github.com/KULLANICI_ADI/REPO_ADI.git
-cd REPO_ADI
+git clone https://github.com/katmanportal1/trafik.git
+cd trafik
 ```
 
 ### 2. Sanal Ortam Oluşturun (Önerilir)
