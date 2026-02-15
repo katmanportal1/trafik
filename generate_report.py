@@ -137,10 +137,20 @@ class ReportGenerator:
             for month in range(1, end_month + 1):
                 month_name = self.months_map[month]
                 html += f"""
-                                <a href="katman_dashboard_{year}_{month:02d}.html" class="list-group-item list-group-item-action small ps-5">
+                                <a href="katman_dashboard_{year}_{month:02d}.html" class="list-group-item list-group-item-action small ps-5 fw-bold">
                                     {month_name}
                                 </a>
                 """
+                # Daily links under current month
+                if year == current_year and month == current_month:
+                    today_day = datetime.now().day
+                    start_day = 15 if month == 2 and year == 2026 else 1
+                    for d in range(start_day, today_day + 1):
+                        html += f"""
+                                <a href="katman_dashboard_{year}_{month:02d}_{d:02d}.html" class="list-group-item list-group-item-action small ps-5 text-muted" style="font-size:0.85em; padding-left:3.5rem !important;">
+                                    &bull; {d} {month_name}
+                                </a>
+                        """
             html += "</div></div></div></div>"
 
         html += """
@@ -253,6 +263,16 @@ class ReportGenerator:
                 self.generate_page(m_start, m_end, f"{month_name} {year}",
                                    f"katman_dashboard_{year}_{m:02d}.html", sidebar, is_monthly=True)
 
+                # Daily pages for current month
+                if year == current_year and m == current_month:
+                    today_day = datetime.now().day
+                    start_day = 15 if m == 2 and year == 2026 else 1
+                    for d in range(start_day, today_day + 1):
+                        d_date = f"{year}-{m:02d}-{d:02d}"
+                        print(f"      * {d} {month_name} {year}")
+                        self.generate_page(d_date, d_date, f"{d} {month_name} {year}",
+                                           f"katman_dashboard_{year}_{m:02d}_{d:02d}.html", sidebar, is_monthly=True)
+
     def generate_page(self, start_date, end_date, title, filename, sidebar_html, is_monthly=False):
         filepath = os.path.join(self.output_dir, filename)
         print(f"   [Processing: {filepath}]")
@@ -280,6 +300,9 @@ class ReportGenerator:
 
         df_downloads = self.helper.get_downloads(start_date=start_date, end_date=end_date, limit=100)
         self.helper.save_data(df_downloads, f"downloads_{title.replace(' ', '_')}")
+
+        df_top_pages = self.helper.get_top_pages(start_date=start_date, end_date=end_date, limit=20)
+        self.helper.save_data(df_top_pages, f"top_pages_{title.replace(' ', '_')}")
 
         # ── Process Daily ───────────────────────────────────
         if not df_daily.empty:
@@ -444,8 +467,31 @@ class ReportGenerator:
         if not df_downloads.empty:
             downloads_html = self._df_to_table(df_downloads[['fileName', 'eventCount']])
 
-        # ── Pre-render Plotly charts with responsive config ──
+        # ── Pre-render config ──
         plotly_cfg = {'responsive': True}
+
+        # ── Top Pages Chart ─────────────────────────────────
+        if not df_top_pages.empty:
+            df_top_display = df_top_pages.head(15).sort_values('screenPageViews', ascending=True)
+            fig_top_pages = px.bar(
+                df_top_display, x='screenPageViews', y='pageTitle', orientation='h',
+                title=f"En Çok Ziyaret Edilen Sayfalar ({title})",
+                text='screenPageViews', color='screenPageViews',
+                color_continuous_scale='Teal'
+            )
+            fig_top_pages.update_traces(textposition='outside')
+            fig_top_pages.update_layout(
+                yaxis_title=None, xaxis_title="Sayfa Görüntüleme",
+                showlegend=False, height=max(400, len(df_top_display) * 35),
+                coloraxis_showscale=False
+            )
+        else:
+            fig_top_pages = go.Figure()
+
+        top_pages_chart_html = fig_top_pages.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        top_pages_table_html = self._df_to_table(df_top_pages[['pageTitle', 'screenPageViews', 'activeUsers']]) if not df_top_pages.empty else "<p class='text-muted'>Veri yok.</p>"
+
+        # ── Pre-render other Plotly charts ──
         trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
         world_html = fig_world.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
         cities_html_chart = fig_cities.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
@@ -479,6 +525,11 @@ class ReportGenerator:
                 .navbar-brand {{ font-weight: 700; }}
                 .plotly-graph-div {{ width: 100% !important; }}
                 .js-plotly-plot {{ width: 100% !important; }}
+
+                /* Mobilde grafikleri dokunmatik yapma (harita haric) */
+                @media (max-width: 992px) {{
+                    .chart-static .plotly-graph-div {{ pointer-events: none; }}
+                }}
 
                 /* Mobile */
                 @media (max-width: 576px) {{
@@ -522,19 +573,28 @@ class ReportGenerator:
 
                 {scorecard}
 
-                <div class="card"><div class="card-body">{trend_html}</div></div>
+                <div class="card chart-static"><div class="card-body">{trend_html}</div></div>
 
                 <div class="row g-2">
                     <div class="col-12 col-md-6"><div class="card"><div class="card-body">{world_html}</div></div></div>
-                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{cities_html_chart}</div></div></div>
+                    <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{cities_html_chart}</div></div></div>
                 </div>
 
                 <div class="row g-2">
-                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{group_s_html}</div></div></div>
-                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{group_u_html}</div></div></div>
+                    <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{group_s_html}</div></div></div>
+                    <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{group_u_html}</div></div></div>
                 </div>
 
-                <div class="card"><div class="card-body">{legend_table}{source_html}</div></div>
+                <div class="card chart-static"><div class="card-body">{legend_table}{source_html}</div></div>
+
+                <div class="card mt-4 chart-static">
+                    <div class="card-header bg-info text-white"><i class="fas fa-fire me-2"></i>En Çok Ziyaret Edilen Sayfalar</div>
+                    <div class="card-body">
+                        {top_pages_chart_html}
+                        <h6 class="mt-3">Detaylı Tablo</h6>
+                        {top_pages_table_html}
+                    </div>
+                </div>
 
                 <h3 class="mt-5 border-bottom pb-2">Kategori Detayları</h3>
                 {groups_html}

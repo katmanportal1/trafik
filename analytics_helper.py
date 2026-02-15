@@ -59,9 +59,6 @@ class AnalyticsHelper:
 
     def save_data(self, df, name):
         """Save dataframe to both Excel and Parquet in exported_data/."""
-        if df.empty:
-            print(f"  [SKIP] {name} - empty dataframe")
-            return
         try:
             xlsx_path = os.path.join(self.data_export_dir, f"{name}.xlsx")
             parquet_path = os.path.join(self.data_export_dir, f"{name}.parquet")
