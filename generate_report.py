@@ -368,13 +368,13 @@ class ReportGenerator:
             for i, art in enumerate(a["articles"], 1):
                 rows += f"""<tr>
                     <td>{i}</td>
-                    <td><a href="{art['url']}" target="_blank" class="text-decoration-none">{art['title']}</a></td>
+                    <td><a href="yazi_{art['slug']}.html" class="text-decoration-none">{art['title']}</a></td>
                     <td class="text-end fw-bold">{art['views']:,}</td>
                 </tr>"""
             author_details += f"""
             <div class="card mt-3">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 fw-bold">{a['name']}</h6>
+                    <a href="yazar_{a['slug']}.html" class="text-decoration-none"><h6 class="mb-0 fw-bold">{a['name']}</h6></a>
                     <span class="badge bg-primary">{a['article_count']} yazı · {a['total_views']:,} görüntüleme</span>
                 </div>
                 <div class="card-body p-0">
@@ -403,9 +403,10 @@ class ReportGenerator:
 
         all_art_rows = ""
         for i, art in enumerate(all_articles[:50], 1):
+            art_slug = art['url'].rstrip('/').split('/')[-1]
             all_art_rows += f"""<tr>
                 <td>{i}</td>
-                <td><a href="{art['url']}" target="_blank" class="text-decoration-none">{art['Yazı']}</a></td>
+                <td><a href="yazi_{art_slug}.html" class="text-decoration-none">{art['Yazı']}</a></td>
                 <td>{art['Yazar']}</td>
                 <td class="text-end fw-bold">{art['Görüntüleme']:,}</td>
             </tr>"""
@@ -472,6 +473,160 @@ class ReportGenerator:
 
             <h4 class="fw-bold text-primary mt-4 mb-3">Yazar Detayları</h4>
             {author_details}
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        </body></html>"""
+
+        with open(filepath, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        print(f"   [SAVED] {filepath}")
+
+        # ── Generate individual article detail pages ──
+        for a in author_stats:
+            for art in a["articles"]:
+                art_filename = f"yazi_{art['slug']}.html"
+                print(f"     → Yazı: {art['title'][:50]}...")
+                self._generate_detail_page(
+                    title=art["title"],
+                    paths=art["path"],
+                    filename=art_filename,
+                    sidebar_html=sidebar_html,
+                    subtitle=f"Yazar: {a['name']}"
+                )
+
+        # ── Generate individual author detail pages ──
+        for a in author_stats:
+            if not a["articles"]:
+                continue
+            author_paths = [art["path"] for art in a["articles"]]
+            author_filename = f"yazar_{a['slug']}.html"
+            print(f"     → Yazar: {a['name']}")
+            self._generate_detail_page(
+                title=f"{a['name']} - Tüm Yazılar",
+                paths=author_paths,
+                filename=author_filename,
+                sidebar_html=sidebar_html,
+                subtitle=f"{a['article_count']} yazı"
+            )
+
+        # ── Update article links in author page to point to detail pages ──
+        # (links already set in the table above)
+
+    def _generate_detail_page(self, title, paths, filename, sidebar_html, subtitle=""):
+        """Generate a detail page for an article or author with minute-level traffic, sources, geography."""
+        filepath = os.path.join(self.output_dir, filename)
+        plotly_static = {'responsive': True, 'scrollZoom': False, 'doubleClick': False, 'displayModeBar': False}
+
+        # Fetch filtered data from GA4
+        df_minutely = self.helper.get_page_minutely(paths)
+        df_sources = self.helper.get_page_sources(paths)
+        df_countries = self.helper.get_page_countries(paths)
+        df_cities = self.helper.get_page_cities(paths)
+
+        # ── Minutely chart (10-min resample) ──
+        minutely_html = ""
+        if not df_minutely.empty:
+            df_minutely['time'] = pd.to_datetime(df_minutely['dateHourMinute'], format='%Y%m%d%H%M')
+            df_minutely = df_minutely.sort_values('time')
+            for col in ['activeUsers', 'sessions', 'screenPageViews', 'eventCount']:
+                df_minutely[col] = df_minutely[col].astype(int)
+            df_minutely = df_minutely.set_index('time').resample('10min').sum(numeric_only=True).reset_index()
+            df_minutely['views_hourly'] = df_minutely['screenPageViews'].rolling(window=6, min_periods=1).sum()
+
+            fig_min = go.Figure()
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['screenPageViews'],
+                                         name='Görüntüleme (10dk)', line=dict(color='#17a2b8')))
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['views_hourly'],
+                                         name='Saatlik Toplam', line=dict(color='#6f42c1', dash='dot')))
+            fig_min.update_layout(title="Dakikalık Trafik", xaxis_title="Zaman", yaxis_title="Görüntüleme",
+                                  hovermode="x unified", xaxis=dict(tickformat='%d/%m %H:%M'))
+            minutely_html = fig_min.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # ── Sources pie chart ──
+        sources_html = ""
+        if not df_sources.empty:
+            df_sources['screenPageViews'] = df_sources['screenPageViews'].astype(int)
+            fig_src = px.pie(df_sources, values='screenPageViews', names='sessionDefaultChannelGroup',
+                             title="Trafik Kaynakları")
+            fig_src.update_layout(height=400)
+            sources_html = fig_src.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # ── Countries bar chart ──
+        countries_html = ""
+        if not df_countries.empty:
+            df_countries['screenPageViews'] = df_countries['screenPageViews'].astype(int)
+            df_countries = df_countries.sort_values('screenPageViews', ascending=True)
+            fig_country = px.bar(df_countries, x='screenPageViews', y='country', orientation='h',
+                                  title="Ülkelere Göre Görüntüleme", text='screenPageViews')
+            fig_country.update_traces(textposition='outside', marker_color='#28a745')
+            fig_country.update_layout(yaxis_title=None, height=max(300, len(df_countries) * 30), showlegend=False)
+            countries_html = fig_country.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # ── Cities bar chart ──
+        cities_html = ""
+        if not df_cities.empty:
+            df_cities['screenPageViews'] = df_cities['screenPageViews'].astype(int)
+            df_cities = df_cities.sort_values('screenPageViews', ascending=True).tail(15)
+            fig_city = px.bar(df_cities, x='screenPageViews', y='city', orientation='h',
+                               title="Şehirlere Göre Görüntüleme", text='screenPageViews')
+            fig_city.update_traces(textposition='outside', marker_color='#fd7e14')
+            fig_city.update_layout(yaxis_title=None, height=max(300, len(df_cities) * 30), showlegend=False)
+            cities_html = fig_city.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # ── Summary stats ──
+        total_views = int(df_minutely['screenPageViews'].sum()) if not df_minutely.empty else 0
+        total_users = int(df_minutely['activeUsers'].sum()) if not df_minutely.empty else 0
+        total_sessions = int(df_minutely['sessions'].sum()) if not df_minutely.empty else 0
+
+        head = """<!DOCTYPE html>
+        <html lang="tr"><head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>""" + title[:60] + """ - Katman Portal</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        <style>body { background: #f8f9fa; } @media (max-width: 576px) { .card h4 { font-size: 1.1rem; } }</style>
+        </head><body>"""
+
+        html = f"""{head}
+        <div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvasSidebar">
+            <div class="offcanvas-header bg-light border-bottom">
+                <h5 class="offcanvas-title fw-bold text-primary">Katman Portal Analiz</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+            </div>
+            <div class="offcanvas-body p-0">{sidebar_html}</div>
+        </div>
+        <div class="container-fluid py-4 px-3 px-md-5" style="max-width:1400px">
+            <div class="d-flex align-items-center gap-3 mb-2">
+                <button class="btn btn-outline-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div>
+                    <h4 class="fw-bold mb-0 text-primary">{title}</h4>
+                    <small class="text-muted">{subtitle}</small>
+                </div>
+            </div>
+            <a href="yazarlar_stats.html" class="btn btn-sm btn-outline-secondary mb-3">
+                <i class="fas fa-arrow-left"></i> Yazar İstatistiklerine Dön
+            </a>
+
+            <div class="row text-center mb-4">
+                <div class="col-4"><div class="card p-3"><h4 class="text-primary fw-bold">{total_views:,}</h4><small class="text-muted">Görüntüleme</small></div></div>
+                <div class="col-4"><div class="card p-3"><h4 class="text-success fw-bold">{total_users:,}</h4><small class="text-muted">Kullanıcı</small></div></div>
+                <div class="col-4"><div class="card p-3"><h4 class="text-info fw-bold">{total_sessions:,}</h4><small class="text-muted">Oturum</small></div></div>
+            </div>
+
+            {"<div class='card mb-4'><div class='card-body'>" + minutely_html + "</div></div>" if minutely_html else "<div class='alert alert-info'>Dakikalık veri bulunamadı.</div>"}
+
+            <div class="row">
+                <div class="col-md-6">
+                    {"<div class='card mb-4'><div class='card-body'>" + sources_html + "</div></div>" if sources_html else ""}
+                </div>
+                <div class="col-md-6">
+                    {"<div class='card mb-4'><div class='card-body'>" + countries_html + "</div></div>" if countries_html else ""}
+                </div>
+            </div>
+
+            {"<div class='card mb-4'><div class='card-body'>" + cities_html + "</div></div>" if cities_html else ""}
         </div>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         </body></html>"""

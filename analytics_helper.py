@@ -341,6 +341,71 @@ class AnalyticsHelper:
             dimension_filter=path_filter
         )
 
+    def _make_path_filter(self, paths):
+        """Create a dimension filter for one or more pagePaths."""
+        if isinstance(paths, str):
+            return FilterExpression(
+                filter=Filter(
+                    field_name="pagePath",
+                    string_filter=Filter.StringFilter(
+                        value=paths,
+                        match_type=Filter.StringFilter.MatchType.EXACT
+                    )
+                )
+            )
+        else:
+            # Multiple paths - use IN_LIST
+            return FilterExpression(
+                filter=Filter(
+                    field_name="pagePath",
+                    in_list_filter=Filter.InListFilter(
+                        values=list(paths),
+                        case_sensitive=True
+                    )
+                )
+            )
+
+    def get_page_minutely(self, paths, start_date="2020-01-01", end_date="today"):
+        """Get minute-level traffic for specific page(s)."""
+        pf = self._make_path_filter(paths)
+        return self.run_report(
+            dimensions=["dateHourMinute"],
+            metrics=["activeUsers", "sessions", "screenPageViews", "eventCount"],
+            date_range=DateRange(start_date=start_date, end_date=end_date),
+            dimension_filter=pf
+        )
+
+    def get_page_sources(self, paths, start_date="2020-01-01", end_date="today"):
+        """Get traffic sources for specific page(s)."""
+        pf = self._make_path_filter(paths)
+        return self.run_report(
+            dimensions=["sessionDefaultChannelGroup"],
+            metrics=["sessions", "activeUsers", "screenPageViews"],
+            date_range=DateRange(start_date=start_date, end_date=end_date),
+            dimension_filter=pf
+        )
+
+    def get_page_countries(self, paths, start_date="2020-01-01", end_date="today"):
+        """Get country breakdown for specific page(s)."""
+        pf = self._make_path_filter(paths)
+        return self.run_report(
+            dimensions=["country"],
+            metrics=["activeUsers", "screenPageViews"],
+            date_range=DateRange(start_date=start_date, end_date=end_date),
+            dimension_filter=pf
+        )
+
+    def get_page_cities(self, paths, start_date="2020-01-01", end_date="today"):
+        """Get city breakdown for specific page(s)."""
+        pf = self._make_path_filter(paths)
+        df = self.run_report(
+            dimensions=["city", "country"],
+            metrics=["activeUsers", "screenPageViews"],
+            date_range=DateRange(start_date=start_date, end_date=end_date),
+            dimension_filter=pf
+        )
+        return df
+
     def get_downloads(self, start_date="2020-01-01", end_date="today", limit=50):
         """Get top file downloads."""
         download_filter = FilterExpression(
