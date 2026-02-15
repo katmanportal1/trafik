@@ -103,15 +103,18 @@ class ReportGenerator:
             </div>
             <div class="offcanvas-body p-0">
                 <div class="list-group list-group-flush mb-3">
-                    <a href="index.html" class="list-group-item list-group-item-action fw-bold text-primary">
-                        <i class="fas fa-chart-line me-2"></i> Son 30 Gün (Canlı)
+                    <a href="bugun.html" class="list-group-item list-group-item-action fw-bold text-danger">
+                        <i class="fas fa-bolt me-2"></i> Bugün (Canlı)
+                    </a>
+                    <a href="son30gun.html" class="list-group-item list-group-item-action fw-bold text-primary">
+                        <i class="fas fa-chart-line me-2"></i> Son 30 Gün
                     </a>
                 </div>
                 <h6 class="text-uppercase text-muted fw-bold px-3 mt-3 small">Yıllık Arşivler</h6>
                 <div class="accordion accordion-flush" id="accordionSidebar">
         """
 
-        for year in range(current_year, 2024, -1):
+        for year in range(current_year, 2025, -1):
             collapse_id = f"collapseYear{year}"
             html += f"""
                 <div class="accordion-item">
@@ -214,16 +217,26 @@ class ReportGenerator:
     def generate_all_reports(self):
         sidebar = self._create_sidebar_html()
 
-        # 1. Index (Last 30 Days)
-        print(">>> Son 30 Gün (index.html)")
-        start_30 = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        self.generate_page(start_30, "today", "Son 30 Gün", "index.html", sidebar, is_monthly=True)
+        # 0. Login page
+        print(">>> Login sayfası (index.html)")
+        self._generate_login_page(sidebar)
 
-        # 2. Yearly & Monthly
+        # 1. Bugün (Today - Live Traffic)
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        print(f">>> Bugün ({today_str}) - Canlı Trafik")
+        self.generate_page(today_str, "today", "Bugün (Canlı)", "bugun.html", sidebar, is_monthly=True)
+
+        # 2. Son 30 Gün
+        print(">>> Son 30 Gün (son30gun.html)")
+        start_30 = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        self.generate_page(start_30, "today", "Son 30 Gün", "son30gun.html", sidebar, is_monthly=True)
+
+        # 3. Yearly & Monthly - start from 2026 (GA4 tracking installed in 2026)
         current_year = datetime.now().year
         current_month = datetime.now().month
+        start_year = 2026  # GA4 tracking start year
 
-        for year in range(2025, current_year + 1):
+        for year in range(start_year, current_year + 1):
             year_start = f"{year}-01-01"
             year_end = f"{year}-12-31"
 
@@ -456,6 +469,11 @@ class ReportGenerator:
             </style>
         </head>
         <body>
+            <script>
+                if (sessionStorage.getItem('katman_auth') !== 'true') {{
+                    window.location.href = 'index.html';
+                }}
+            </script>
             {sidebar_html}
 
             <div class="container">
@@ -500,6 +518,130 @@ class ReportGenerator:
         </html>
         """
 
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"   [SAVED] {filepath}")
+
+    def _generate_login_page(self, sidebar_html):
+        """Generate a password-protected login page as index.html."""
+        filepath = os.path.join(self.output_dir, "index.html")
+        html = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Katman Portal - Giriş</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0c1445 0%, #1a237e 50%, #283593 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 50px 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        .login-card h1 {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #1a237e;
+            margin-bottom: 8px;
+        }
+        .login-card p {
+            color: #6c757d;
+            margin-bottom: 30px;
+        }
+        .form-control {
+            border-radius: 12px;
+            padding: 14px 20px;
+            font-size: 1em;
+            border: 2px solid #e0e0e0;
+            transition: border-color 0.3s;
+        }
+        .form-control:focus {
+            border-color: #1a237e;
+            box-shadow: 0 0 0 3px rgba(26,35,126,0.15);
+        }
+        .btn-login {
+            background: linear-gradient(135deg, #1a237e, #283593);
+            border: none;
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 1.05em;
+            font-weight: 600;
+            color: white;
+            width: 100%;
+            margin-top: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(26,35,126,0.3);
+            color: white;
+        }
+        .error-msg {
+            color: #dc3545;
+            font-size: 0.9em;
+            margin-top: 10px;
+            display: none;
+        }
+        .logo-icon {
+            font-size: 3em;
+            color: #1a237e;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-icon"><i class="fas fa-chart-pie"></i></div>
+        <h1>Katman Portal</h1>
+        <p>Veri Analitiği Dashboard</p>
+        <form id="loginForm">
+            <input type="password" class="form-control" id="passwordInput"
+                   placeholder="Şifrenizi girin..." autofocus>
+            <button type="submit" class="btn btn-login">
+                <i class="fas fa-sign-in-alt me-2"></i>Giriş Yap
+            </button>
+            <div class="error-msg" id="errorMsg">
+                <i class="fas fa-exclamation-circle me-1"></i> Yanlış şifre. Tekrar deneyin.
+            </div>
+        </form>
+    </div>
+    <script>
+        // If already authenticated, redirect
+        if (sessionStorage.getItem('katman_auth') === 'true') {
+            window.location.href = 'bugun.html';
+        }
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var pw = document.getElementById('passwordInput').value;
+            if (pw === 'katmanportal') {
+                sessionStorage.setItem('katman_auth', 'true');
+                window.location.href = 'bugun.html';
+            } else {
+                document.getElementById('errorMsg').style.display = 'block';
+                document.getElementById('passwordInput').value = '';
+                document.getElementById('passwordInput').focus();
+            }
+        });
+    </script>
+</body>
+</html>
+        """
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
         print(f"   [SAVED] {filepath}")
