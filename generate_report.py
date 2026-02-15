@@ -506,20 +506,18 @@ class ReportGenerator:
             fig_top_pages = px.bar(
                 df_top_display, x='screenPageViews', y='pageTitle', orientation='h',
                 title=f"En Çok Ziyaret Edilen Sayfalar ({title})",
-                text='screenPageViews', color='screenPageViews',
-                color_continuous_scale='Teal'
+                text='screenPageViews'
             )
-            fig_top_pages.update_traces(textposition='outside')
+            fig_top_pages.update_traces(textposition='outside', marker_color='#17a2b8')
             fig_top_pages.update_layout(
                 yaxis_title=None, xaxis_title="Sayfa Görüntüleme",
-                showlegend=False, height=max(400, len(df_top_display) * 35),
-                coloraxis_showscale=False
+                showlegend=False, height=max(400, len(df_top_display) * 35)
             )
         else:
             fig_top_pages = go.Figure()
 
         top_pages_chart_html = fig_top_pages.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
-        top_pages_table_html = self._df_to_table(df_top_pages[['pageTitle', 'screenPageViews', 'activeUsers']]) if not df_top_pages.empty else "<p class='text-muted'>Veri yok.</p>"
+        top_pages_table_html = self._df_to_table(df_top_pages[['pageTitle', 'screenPageViews']]) if not df_top_pages.empty else "<p class='text-muted'>Veri yok.</p>"
 
         # ── Pre-render other Plotly charts ──
         trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
