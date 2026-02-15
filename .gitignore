@@ -1,0 +1,37 @@
+# ===== Hassas Bilgiler =====
+# Google Cloud Service Account Key
+*.json
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ===== Kişisel Belgeler =====
+*.docx
+
+# ===== Üretilen / Büyük Veri =====
+Crawled_Data/
+data_cache/
+exported_data/
+dashboard/
+
+# ===== Log Dosyaları =====
+*.log
+
+# ===== Sitemap (crawl ile indirilen) =====
+*.xml
+
+# ===== Üretilen Excel =====
+katman_crawled_index.xlsx
+
+# ===== IDE =====
+.vscode/
+.idea/
