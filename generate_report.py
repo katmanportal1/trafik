@@ -495,7 +495,7 @@ class ReportGenerator:
 
         # ── Pre-render config ──
         plotly_cfg = {'responsive': True}
-        plotly_static = {'responsive': True, 'staticPlot': True}
+        plotly_static = {'responsive': True, 'scrollZoom': False, 'doubleClick': False, 'displayModeBar': False}
 
         # ── Top Pages Chart ─────────────────────────────────
         if not df_top_pages.empty:
