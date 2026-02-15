@@ -23,6 +23,8 @@ data_cache/
 exported_data/
 dashboard/
 
+# docs/ klasörü GitHub Pages için tracked (hariç tutulmaz)
+
 # ===== Log Dosyaları =====
 *.log
 
