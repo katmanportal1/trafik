@@ -318,8 +318,11 @@ class ReportGenerator:
             df_daily = df_daily.sort_values('time')
             for col in ['activeUsers', 'sessions', 'screenPageViews', 'eventCount']:
                 df_daily[col] = df_daily[col].astype(int)
-            df_daily['activeUsers_rolling'] = df_daily['activeUsers'].rolling(window=30, min_periods=1).mean()
-            df_daily['sessions_rolling'] = df_daily['sessions'].rolling(window=30, min_periods=1).mean()
+            # Resample to 10-minute intervals
+            df_daily = df_daily.set_index('time').resample('10min').sum(numeric_only=True).reset_index()
+            # Hourly rolling sum (6 x 10min = 1 hour)
+            df_daily['activeUsers_hourly'] = df_daily['activeUsers'].rolling(window=6, min_periods=1).sum()
+            df_daily['sessions_hourly'] = df_daily['sessions'].rolling(window=6, min_periods=1).sum()
         elif not df_daily.empty:
             df_daily['date'] = pd.to_datetime(df_daily['date'])
             df_daily = df_daily.sort_values('date')
@@ -338,12 +341,12 @@ class ReportGenerator:
         fig_trend = go.Figure()
         if is_single_day and not df_daily.empty:
             x_col = 'time'
-            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers'], name='Kullanıcı (Dakikalık)', line=dict(color='#00CC96')))
-            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions'], name='Oturum (Dakikalık)', line=dict(color='#636EFA')))
-            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers_rolling'], name='Kullanıcı (30dk Ort.)', line=dict(color='#00CC96', dash='dot')))
-            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions_rolling'], name='Oturum (30dk Ort.)', line=dict(color='#636EFA', dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers'], name='Kullanıcı (10dk)', line=dict(color='#00CC96')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions'], name='Oturum (10dk)', line=dict(color='#636EFA')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers_hourly'], name='Kullanıcı (Saatlik Toplam)', line=dict(color='#00CC96', dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions_hourly'], name='Oturum (Saatlik Toplam)', line=dict(color='#636EFA', dash='dot')))
             fig_trend.update_layout(
-                title=f"Dakikalık Trafik ({title})", xaxis_title="Saat", yaxis_title="Sayı",
+                title=f"Trafik ({title}) — 10 Dakikalık", xaxis_title="Saat", yaxis_title="Sayı",
                 hovermode="x unified",
                 xaxis=dict(tickformat='%H:%M')
             )
