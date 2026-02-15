@@ -10,6 +10,8 @@ from analytics_helper import AnalyticsHelper
 from datetime import datetime, timedelta
 import os
 import calendar
+import glob
+from bs4 import BeautifulSoup
 
 class ReportGenerator:
     def __init__(self):
@@ -108,6 +110,9 @@ class ReportGenerator:
                     </a>
                     <a href="son30gun.html" class="list-group-item list-group-item-action fw-bold text-primary">
                         <i class="fas fa-chart-line me-2"></i> Son 30 Gün
+                    </a>
+                    <a href="yazarlar_stats.html" class="list-group-item list-group-item-action fw-bold text-success">
+                        <i class="fas fa-users me-2"></i> Yazar İstatistikleri
                     </a>
                 </div>
                 <h6 class="text-uppercase text-muted fw-bold px-3 mt-3 small">Yıllık Arşivler</h6>
@@ -223,6 +228,258 @@ class ReportGenerator:
         html += "</div>"
         return html
 
+    # ─── AUTHOR & ARTICLE EXTRACTION ──────────────────────
+    def _extract_authors_articles(self):
+        """Extract author names and their articles from crawled HTML."""
+        crawled_dir = "Crawled_Data"
+        authors = {}  # slug -> {name, articles: [{title, url, slug}]}
+
+        # 1. Parse author pages for names and article links
+        for f in glob.glob(os.path.join(crawled_dir, "author_*.html")):
+            slug = os.path.basename(f).replace("author_", "").replace(".html", "")
+            try:
+                soup = BeautifulSoup(open(f, encoding="utf-8").read(), "html.parser")
+                h2 = soup.find("h2")
+                name = h2.text.strip() if h2 else slug
+                # Find article links
+                articles = []
+                skip_words = ["author", "category", "tag", "page_", "yazarlar", "#",
+                              "newsletter", "hakkimizda", "iletisim", "cerez",
+                              "gizlilik", "kullanim", "yayin-ilkeleri", "yaziyukle",
+                              "abonelik", "yapay-zeka-kullanim", "soylesiler", "tr_newsletter"]
+                for a in soup.select("a[href]"):
+                    href = a.get("href", "")
+                    text = a.text.strip()
+                    if "katmanportal.com" in href and text and len(text) > 15:
+                        if not any(w in href for w in skip_words):
+                            art_slug = href.rstrip("/").split("/")[-1]
+                            if art_slug and art_slug not in [ar["slug"] for ar in articles]:
+                                articles.append({
+                                    "title": text,
+                                    "url": href,
+                                    "slug": art_slug,
+                                    "path": f"/{art_slug}/"
+                                })
+                authors[slug] = {"name": name, "articles": articles}
+            except Exception as e:
+                print(f"  [WARN] Error parsing {f}: {e}")
+
+        # 2. Also scan article pages for author attribution
+        art_files = [f for f in os.listdir(crawled_dir)
+                     if f.endswith(".html") and not f.startswith(("author_", "category_", "tag_",
+                     "index", "yazarlar", "newsletter", "hakkimizda", "iletisim", "cerez",
+                     "gizlilik", "kullanim", "yayin", "yaziyukle", "abonelik", "yapay-zeka-kull",
+                     "soylesiler", "tr_", "2026"))]
+        for af in art_files:
+            try:
+                soup = BeautifulSoup(open(os.path.join(crawled_dir, af), encoding="utf-8").read(), "html.parser")
+                h1 = soup.find("h1")
+                title = h1.text.strip() if h1 else af.replace(".html", "").replace("-", " ").title()
+                art_slug = af.replace(".html", "")
+                # Find author from author link
+                author_links = soup.select('a[href*="/author/"]')
+                for al in author_links:
+                    a_slug = al.get("href", "").rstrip("/").split("/")[-1]
+                    a_name = al.text.strip()
+                    if a_slug and a_name:
+                        if a_slug not in authors:
+                            authors[a_slug] = {"name": a_name, "articles": []}
+                        existing_slugs = [ar["slug"] for ar in authors[a_slug]["articles"]]
+                        if art_slug not in existing_slugs:
+                            authors[a_slug]["articles"].append({
+                                "title": title,
+                                "url": f"https://katmanportal.com/{art_slug}/",
+                                "slug": art_slug,
+                                "path": f"/{art_slug}/"
+                            })
+                        break
+            except Exception as e:
+                print(f"  [WARN] Error parsing article {af}: {e}")
+
+        return authors
+
+    def generate_authors_page(self, sidebar_html):
+        """Generate author statistics page with per-article read counts."""
+        print(">>> Yazar İstatistikleri sayfası")
+        authors = self._extract_authors_articles()
+        print(f"   {len(authors)} yazar, toplam {sum(len(a['articles']) for a in authors.values())} yazı bulundu")
+
+        # Get all page views from GA4
+        df_pages = self.helper.get_top_pages(start_date="2020-01-01", end_date="today", limit=500)
+        self.helper.save_data(df_pages, "all_pages_views")
+
+        # Build path -> views mapping
+        page_views = {}
+        if not df_pages.empty:
+            for _, row in df_pages.iterrows():
+                path = row.get("pagePath", "")
+                views = int(row.get("screenPageViews", 0))
+                page_views[path] = views
+
+        # Build author stats
+        author_stats = []
+        for slug, info in authors.items():
+            total_views = 0
+            articles_with_views = []
+            for art in info["articles"]:
+                v = page_views.get(art["path"], 0)
+                # Try with trailing slash variants
+                if v == 0:
+                    v = page_views.get(art["path"].rstrip("/"), 0)
+                if v == 0:
+                    v = page_views.get("/" + art["slug"], 0)
+                total_views += v
+                articles_with_views.append({**art, "views": v})
+            articles_with_views.sort(key=lambda x: x["views"], reverse=True)
+            author_stats.append({
+                "slug": slug,
+                "name": info["name"],
+                "article_count": len(info["articles"]),
+                "total_views": total_views,
+                "articles": articles_with_views
+            })
+        author_stats.sort(key=lambda x: x["total_views"], reverse=True)
+
+        # ── Charts ──
+        plotly_static = {'responsive': True, 'scrollZoom': False, 'doubleClick': False, 'displayModeBar': False}
+
+        df_authors = pd.DataFrame([{"Yazar": a["name"], "Yazı Sayısı": a["article_count"],
+                                     "Toplam Görüntüleme": a["total_views"]} for a in author_stats])
+
+        # Author by views chart
+        fig_views = px.bar(df_authors.sort_values("Toplam Görüntüleme"), x="Toplam Görüntüleme", y="Yazar",
+                           orientation="h", title="Yazarlara Göre Toplam Görüntüleme", text="Toplam Görüntüleme")
+        fig_views.update_traces(textposition="outside", marker_color="#6f42c1")
+        fig_views.update_layout(yaxis_title=None, height=max(500, len(author_stats) * 30), showlegend=False)
+
+        # Author by article count
+        fig_count = px.bar(df_authors.sort_values("Yazı Sayısı"), x="Yazı Sayısı", y="Yazar",
+                           orientation="h", title="Yazarlara Göre Yazı Sayısı", text="Yazı Sayısı")
+        fig_count.update_traces(textposition="outside", marker_color="#17a2b8")
+        fig_count.update_layout(yaxis_title=None, height=max(500, len(author_stats) * 30), showlegend=False)
+
+        views_html = fig_views.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+        count_html = fig_count.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # ── Author detail tables ──
+        author_details = ""
+        for a in author_stats:
+            rows = ""
+            for i, art in enumerate(a["articles"], 1):
+                rows += f"""<tr>
+                    <td>{i}</td>
+                    <td><a href="{art['url']}" target="_blank" class="text-decoration-none">{art['title']}</a></td>
+                    <td class="text-end fw-bold">{art['views']:,}</td>
+                </tr>"""
+            author_details += f"""
+            <div class="card mt-3">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold">{a['name']}</h6>
+                    <span class="badge bg-primary">{a['article_count']} yazı · {a['total_views']:,} görüntüleme</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr><th>#</th><th>Yazı</th><th class="text-end">Görüntüleme</th></tr>
+                        </thead>
+                        <tbody>{rows if rows else '<tr><td colspan="3" class="text-muted text-center">Henüz veri yok</td></tr>'}</tbody>
+                    </table>
+                    </div>
+                </div>
+            </div>"""
+
+        # ── Summary stats ──
+        total_authors = len(author_stats)
+        total_articles = sum(a["article_count"] for a in author_stats)
+        total_all_views = sum(a["total_views"] for a in author_stats)
+
+        # ── All articles table ──
+        all_articles = []
+        for a in author_stats:
+            for art in a["articles"]:
+                all_articles.append({"Yazar": a["name"], "Yazı": art["title"], "Görüntüleme": art["views"], "url": art["url"]})
+        all_articles.sort(key=lambda x: x["Görüntüleme"], reverse=True)
+
+        all_art_rows = ""
+        for i, art in enumerate(all_articles[:50], 1):
+            all_art_rows += f"""<tr>
+                <td>{i}</td>
+                <td><a href="{art['url']}" target="_blank" class="text-decoration-none">{art['Yazı']}</a></td>
+                <td>{art['Yazar']}</td>
+                <td class="text-end fw-bold">{art['Görüntüleme']:,}</td>
+            </tr>"""
+
+        # ── Generate HTML ──
+        head = """<!DOCTYPE html>
+        <html lang="tr"><head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Yazar İstatistikleri - Katman Portal</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        <style>
+            body { background: #f8f9fa; }
+            @media (max-width: 576px) { .card h4 { font-size: 1.2rem; } }
+        </style>
+        </head><body>"""
+        filepath = os.path.join(self.output_dir, "yazarlar_stats.html")
+
+        html = f"""{head}
+        <div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvasSidebar">
+            <div class="offcanvas-header bg-light border-bottom">
+                <h5 class="offcanvas-title fw-bold text-primary">Katman Portal Analiz</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+            </div>
+            <div class="offcanvas-body p-0">{sidebar_html}</div>
+        </div>
+        <div class="container-fluid py-4 px-3 px-md-5" style="max-width:1400px">
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+                <div class="d-flex align-items-center gap-3">
+                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h3 class="fw-bold mb-0 text-primary">Yazar İstatistikleri</h3>
+                </div>
+            </div>
+
+            <div class="row text-center mb-4">
+                <div class="col-md-4"><div class="card p-3"><h4 class="text-primary fw-bold">{total_authors}</h4><small class="text-muted">Toplam Yazar</small></div></div>
+                <div class="col-md-4"><div class="card p-3"><h4 class="text-success fw-bold">{total_articles}</h4><small class="text-muted">Toplam Yazı</small></div></div>
+                <div class="col-md-4"><div class="card p-3"><h4 class="text-info fw-bold">{total_all_views:,}</h4><small class="text-muted">Toplam Görüntüleme</small></div></div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">En Çok Okunan Yazılar</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr><th>#</th><th>Yazı</th><th>Yazar</th><th class="text-end">Görüntüleme</th></tr>
+                        </thead>
+                        <tbody>{all_art_rows}</tbody>
+                    </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">{views_html}</div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">{count_html}</div>
+            </div>
+
+            <h4 class="fw-bold text-primary mt-4 mb-3">Yazar Detayları</h4>
+            {author_details}
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        </body></html>"""
+
+        with open(filepath, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        print(f"   [SAVED] {filepath}")
+
     # ─── MAIN GENERATOR ────────────────────────────────────
     def generate_all_reports(self):
         sidebar = self._create_sidebar_html()
@@ -230,6 +487,9 @@ class ReportGenerator:
         # 0. Login page
         print(">>> Login sayfası (index.html)")
         self._generate_login_page(sidebar)
+
+        # 0.5. Author Statistics Page
+        self.generate_authors_page(sidebar)
 
         # 1. Bugün (Today - Live Traffic)
         today_str = datetime.now().strftime('%Y-%m-%d')
