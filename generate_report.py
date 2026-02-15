@@ -469,6 +469,7 @@ class ReportGenerator:
 
         # ── Pre-render config ──
         plotly_cfg = {'responsive': True}
+        plotly_static = {'responsive': True, 'staticPlot': True}
 
         # ── Top Pages Chart ─────────────────────────────────
         if not df_top_pages.empty:
@@ -488,16 +489,16 @@ class ReportGenerator:
         else:
             fig_top_pages = go.Figure()
 
-        top_pages_chart_html = fig_top_pages.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        top_pages_chart_html = fig_top_pages.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
         top_pages_table_html = self._df_to_table(df_top_pages[['pageTitle', 'screenPageViews', 'activeUsers']]) if not df_top_pages.empty else "<p class='text-muted'>Veri yok.</p>"
 
         # ── Pre-render other Plotly charts ──
-        trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
-        world_html = fig_world.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
-        cities_html_chart = fig_cities.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
-        group_s_html = fig_group_s.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
-        group_u_html = fig_group_u.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
-        source_html = fig_source.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+        world_html = fig_world.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)  # Map stays interactive
+        cities_html_chart = fig_cities.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+        group_s_html = fig_group_s.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+        group_u_html = fig_group_u.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+        source_html = fig_source.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
 
         # ── HTML Assembly ───────────────────────────────────
         html = f"""
