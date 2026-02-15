@@ -156,18 +156,18 @@ class ReportGenerator:
     # ─── SCORECARD ──────────────────────────────────────────
     def _scorecard_html(self, users, sessions, views, events):
         return f"""
-        <div class="row mb-4">
-            <div class="col-md-3"><div class="metric-box"><div class="metric-value text-primary">{users:,}</div><div class="metric-label">Toplam Kullanıcı</div></div></div>
-            <div class="col-md-3"><div class="metric-box"><div class="metric-value text-success">{sessions:,}</div><div class="metric-label">Toplam Oturum</div></div></div>
-            <div class="col-md-3"><div class="metric-box"><div class="metric-value text-info">{views:,}</div><div class="metric-label">Sayfa Görüntüleme</div></div></div>
-            <div class="col-md-3"><div class="metric-box"><div class="metric-value text-warning">{events:,}</div><div class="metric-label">Toplam Etkileşim</div></div></div>
+        <div class="row mb-4 g-2">
+            <div class="col-6 col-md-3"><div class="metric-box"><div class="metric-value text-primary">{users:,}</div><div class="metric-label">Toplam Kullanıcı</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-box"><div class="metric-value text-success">{sessions:,}</div><div class="metric-label">Toplam Oturum</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-box"><div class="metric-value text-info">{views:,}</div><div class="metric-label">Sayfa Görüntüleme</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-box"><div class="metric-value text-warning">{events:,}</div><div class="metric-label">Toplam Etkileşim</div></div></div>
         </div>
         """
 
     # ─── TABLE ──────────────────────────────────────────────
     def _df_to_table(self, df):
         if df.empty:
-            return "<p class='text-muted small'>Veri bulunamadı.</p>"
+            return "<div class='table-responsive'>" + "<p class='text-muted small'>Veri bulunamadı.</p>" + "</div>"
 
         cols_config = [
             {"col": "pageTitle", "label": "Sayfa", "width": "40%"},
@@ -182,7 +182,7 @@ class ReportGenerator:
         ]
 
         valid = [c for c in cols_config if c['col'] in df.columns]
-        html = "<table class='table table-sm table-striped table-hover table-bordered'><thead class='table-light'><tr>"
+        html = "<div class='table-responsive'><table class='table table-sm table-striped table-hover table-bordered'><thead class='table-light'><tr>"
         for c in valid:
             html += f"<th style='width:{c['width']}'>{c['label']}</th>"
         html += "</tr></thead><tbody>"
@@ -195,7 +195,7 @@ class ReportGenerator:
                     val = f"{int(val):,}" if pd.notnull(val) else "0"
                 html += f"<td>{val}</td>"
             html += "</tr>"
-        html += "</tbody></table>"
+        html += "</tbody></table></div>"
         return html
 
     # ─── MONTHLY BEST ───────────────────────────────────────
@@ -444,6 +444,15 @@ class ReportGenerator:
         if not df_downloads.empty:
             downloads_html = self._df_to_table(df_downloads[['fileName', 'eventCount']])
 
+        # ── Pre-render Plotly charts with responsive config ──
+        plotly_cfg = {'responsive': True}
+        trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        world_html = fig_world.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        cities_html_chart = fig_cities.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        group_s_html = fig_group_s.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        group_u_html = fig_group_u.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+        source_html = fig_source.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)
+
         # ── HTML Assembly ───────────────────────────────────
         html = f"""
         <!DOCTYPE html>
@@ -457,15 +466,38 @@ class ReportGenerator:
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
             <style>
                 body {{ font-family: 'Inter', sans-serif; background-color: #f0f2f5; }}
-                .container {{ max-width: 1400px; margin-top: 20px; margin-bottom: 50px; }}
-                .card {{ margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: none; border-radius: 12px; }}
+                .container {{ max-width: 1400px; margin-top: 20px; margin-bottom: 50px; padding: 0 15px; }}
+                .card {{ margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: none; border-radius: 12px; overflow: hidden; }}
                 .card-header {{ border-radius: 12px 12px 0 0 !important; }}
-                .metric-box {{ background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); transition: transform 0.2s; }}
+                .card-body {{ overflow-x: auto; }}
+                .metric-box {{ background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); transition: transform 0.2s; margin-bottom: 10px; }}
                 .metric-box:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
                 .metric-value {{ font-size: 2em; font-weight: 700; }}
                 .metric-label {{ color: #6c757d; font-size: 0.9em; margin-top: 4px; }}
                 table {{ font-size: 0.88em; }}
+                .table-responsive {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
                 .navbar-brand {{ font-weight: 700; }}
+                .plotly-graph-div {{ width: 100% !important; }}
+                .js-plotly-plot {{ width: 100% !important; }}
+
+                /* Mobile */
+                @media (max-width: 576px) {{
+                    .container {{ padding: 0 8px; margin-top: 10px; }}
+                    .metric-value {{ font-size: 1.4em; }}
+                    .metric-box {{ padding: 12px 8px; }}
+                    .metric-label {{ font-size: 0.75em; }}
+                    h1.h3 {{ font-size: 1.1em !important; }}
+                    .card-body {{ padding: 10px; }}
+                    table {{ font-size: 0.75em; }}
+                    .header-bar {{ flex-direction: column; gap: 8px; text-align: center; }}
+                }}
+
+                /* Tablet */
+                @media (min-width: 577px) and (max-width: 992px) {{
+                    .metric-value {{ font-size: 1.6em; }}
+                    h1.h3 {{ font-size: 1.3em !important; }}
+                    table {{ font-size: 0.82em; }}
+                }}
             </style>
         </head>
         <body>
@@ -477,32 +509,32 @@ class ReportGenerator:
             {sidebar_html}
 
             <div class="container">
-                <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 header-bar">
                     <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar">
                         ☰ Menü
                     </button>
-                    <div class="text-center">
-                        <h1 class="h3 fw-bold">Katman Portal: {title}</h1>
-                        <p class="text-muted mb-0">Kapsam: {start_date} – {end_date}</p>
+                    <div class="text-center flex-grow-1">
+                        <h1 class="h3 fw-bold mb-1">{title}</h1>
+                        <p class="text-muted mb-0 small">{start_date} – {end_date}</p>
                     </div>
                     <span class="badge bg-secondary">{datetime.now().strftime('%d.%m.%Y %H:%M')}</span>
                 </div>
 
                 {scorecard}
 
-                <div class="card"><div class="card-body">{fig_trend.to_html(full_html=False, include_plotlyjs='cdn')}</div></div>
+                <div class="card"><div class="card-body">{trend_html}</div></div>
 
-                <div class="row">
-                    <div class="col-md-6"><div class="card"><div class="card-body">{fig_world.to_html(full_html=False, include_plotlyjs='cdn')}</div></div></div>
-                    <div class="col-md-6"><div class="card"><div class="card-body">{fig_cities.to_html(full_html=False, include_plotlyjs='cdn')}</div></div></div>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{world_html}</div></div></div>
+                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{cities_html_chart}</div></div></div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6"><div class="card"><div class="card-body">{fig_group_s.to_html(full_html=False, include_plotlyjs='cdn')}</div></div></div>
-                    <div class="col-md-6"><div class="card"><div class="card-body">{fig_group_u.to_html(full_html=False, include_plotlyjs='cdn')}</div></div></div>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{group_s_html}</div></div></div>
+                    <div class="col-12 col-md-6"><div class="card"><div class="card-body">{group_u_html}</div></div></div>
                 </div>
 
-                <div class="card"><div class="card-body">{legend_table}{fig_source.to_html(full_html=False, include_plotlyjs='cdn')}</div></div>
+                <div class="card"><div class="card-body">{legend_table}{source_html}</div></div>
 
                 <h3 class="mt-5 border-bottom pb-2">Kategori Detayları</h3>
                 {groups_html}
