@@ -278,16 +278,23 @@ class ReportGenerator:
         print(f"   [Processing: {filepath}]")
 
         # ── Fetch & Save Data ───────────────────────────────
-        # Buffer for rolling averages
-        fetch_start = start_date
-        try:
-            dt = datetime.strptime(start_date, "%Y-%m-%d")
-            fetch_start = (dt - timedelta(days=30)).strftime("%Y-%m-%d")
-        except:
-            pass
+        # Detect if this is a single-day page
+        is_single_day = (start_date == end_date) or end_date == "today"
 
-        df_daily = self.helper.get_daily_traffic(start_date=fetch_start, end_date=end_date)
-        self.helper.save_data(df_daily, f"daily_{title.replace(' ', '_')}")
+        if is_single_day:
+            # Minute-level data for single day
+            df_daily = self.helper.get_minutely_traffic(start_date=start_date, end_date=end_date)
+            self.helper.save_data(df_daily, f"minutely_{title.replace(' ', '_')}")
+        else:
+            # Buffer for rolling averages
+            fetch_start = start_date
+            try:
+                dt = datetime.strptime(start_date, "%Y-%m-%d")
+                fetch_start = (dt - timedelta(days=30)).strftime("%Y-%m-%d")
+            except:
+                pass
+            df_daily = self.helper.get_daily_traffic(start_date=fetch_start, end_date=end_date)
+            self.helper.save_data(df_daily, f"daily_{title.replace(' ', '_')}")
 
         df_countries = self.helper.get_countries(start_date=start_date, end_date=end_date)
         self.helper.save_data(df_countries, f"countries_{title.replace(' ', '_')}")
@@ -304,8 +311,16 @@ class ReportGenerator:
         df_top_pages = self.helper.get_top_pages(start_date=start_date, end_date=end_date, limit=20)
         self.helper.save_data(df_top_pages, f"top_pages_{title.replace(' ', '_')}")
 
-        # ── Process Daily ───────────────────────────────────
-        if not df_daily.empty:
+        # ── Process Traffic Data ───────────────────────────────
+        if is_single_day and not df_daily.empty:
+            # Parse dateHourMinute (format: YYYYMMDDHHmm)
+            df_daily['time'] = pd.to_datetime(df_daily['dateHourMinute'], format='%Y%m%d%H%M')
+            df_daily = df_daily.sort_values('time')
+            for col in ['activeUsers', 'sessions', 'screenPageViews', 'eventCount']:
+                df_daily[col] = df_daily[col].astype(int)
+            df_daily['activeUsers_rolling'] = df_daily['activeUsers'].rolling(window=30, min_periods=1).mean()
+            df_daily['sessions_rolling'] = df_daily['sessions'].rolling(window=30, min_periods=1).mean()
+        elif not df_daily.empty:
             df_daily['date'] = pd.to_datetime(df_daily['date'])
             df_daily = df_daily.sort_values('date')
             df_daily['activeUsers_rolling'] = df_daily['activeUsers'].rolling(window=30, min_periods=1).sum()
@@ -321,7 +336,18 @@ class ReportGenerator:
 
         # ── Trend Chart ─────────────────────────────────────
         fig_trend = go.Figure()
-        if not df_daily.empty:
+        if is_single_day and not df_daily.empty:
+            x_col = 'time'
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers'], name='Kullanıcı (Dakikalık)', line=dict(color='#00CC96')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions'], name='Oturum (Dakikalık)', line=dict(color='#636EFA')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['activeUsers_rolling'], name='Kullanıcı (30dk Ort.)', line=dict(color='#00CC96', dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=df_daily[x_col], y=df_daily['sessions_rolling'], name='Oturum (30dk Ort.)', line=dict(color='#636EFA', dash='dot')))
+            fig_trend.update_layout(
+                title=f"Dakikalık Trafik ({title})", xaxis_title="Saat", yaxis_title="Sayı",
+                hovermode="x unified",
+                xaxis=dict(tickformat='%H:%M')
+            )
+        elif not df_daily.empty:
             fig_trend.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['activeUsers'], name='Kullanıcı (Günlük)', line=dict(color='#00CC96')))
             fig_trend.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['sessions'], name='Oturum (Günlük)', line=dict(color='#636EFA')))
             fig_trend.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['activeUsers_rolling'], name='Kullanıcı (30G)', line=dict(color='#00CC96', dash='dot'), visible=False))

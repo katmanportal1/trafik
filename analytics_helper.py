@@ -139,6 +139,14 @@ class AnalyticsHelper:
             date_range=DateRange(start_date=start_date, end_date=end_date)
         )
 
+    def get_minutely_traffic(self, start_date="today", end_date="today"):
+        """Get minute-level sessions and users for a single day."""
+        return self.run_report(
+            dimensions=["dateHourMinute"],
+            metrics=["activeUsers", "sessions", "screenPageViews", "eventCount"],
+            date_range=DateRange(start_date=start_date, end_date=end_date)
+        )
+
     def get_top_pages(self, start_date="2020-01-01", end_date="today", limit=50):
         """Get top viewed pages."""
         df = self.run_report(
