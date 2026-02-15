@@ -629,7 +629,7 @@ class ReportGenerator:
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
             var pw = document.getElementById('passwordInput').value;
-            if (pw === 'katmanportal') {
+            if (pw === 'patman kortal') {
                 sessionStorage.setItem('katman_auth', 'true');
                 window.location.href = 'bugun.html';
             } else {
