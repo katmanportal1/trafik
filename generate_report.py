@@ -539,34 +539,37 @@ class ReportGenerator:
         total_users = int(df_totals['activeUsers'].iloc[0]) if not df_totals.empty else 0
         total_sessions = int(df_totals['sessions'].iloc[0]) if not df_totals.empty else 0
 
-        # ── Daily traffic chart ──
-        df_daily = self.helper.run_report(
-            dimensions=["date"],
-            metrics=["screenPageViews", "activeUsers", "sessions"],
-            date_range=DateRange(start_date="2020-01-01", end_date="today"),
-            dimension_filter=pf
-        )
+        # ── Minutely traffic chart (10-min resample, like bugun.html) ──
+        df_minutely = self.helper.get_page_minutely(paths)
+        minutely_html = ""
+        if not df_minutely.empty:
+            df_minutely['time'] = pd.to_datetime(df_minutely['dateHourMinute'], format='%Y%m%d%H%M')
+            df_minutely = df_minutely.sort_values('time')
+            for col in ['activeUsers', 'sessions', 'screenPageViews', 'eventCount']:
+                df_minutely[col] = df_minutely[col].astype(int)
+            df_minutely = df_minutely.set_index('time').resample('10min').sum(numeric_only=True).reset_index()
+            df_minutely['activeUsers_hourly'] = df_minutely['activeUsers'].rolling(window=6, min_periods=1).sum()
+            df_minutely['sessions_hourly'] = df_minutely['sessions'].rolling(window=6, min_periods=1).sum()
 
-        daily_html = ""
-        if not df_daily.empty:
-            df_daily['date'] = pd.to_datetime(df_daily['date'], format='%Y%m%d')
-            df_daily = df_daily.sort_values('date')
-            for col in ['screenPageViews', 'activeUsers', 'sessions']:
-                df_daily[col] = df_daily[col].astype(int)
-
-            fig_daily = go.Figure()
-            fig_daily.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['screenPageViews'],
-                                           name='Görüntüleme', line=dict(color='#17a2b8'), fill='tozeroy'))
-            fig_daily.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['activeUsers'],
-                                           name='Kullanıcı', line=dict(color='#28a745')))
-            fig_daily.update_layout(title="Günlük Trafik", xaxis_title="Tarih", yaxis_title="Sayı",
-                                    hovermode="x unified", xaxis=dict(tickformat='%d/%m/%Y'))
-            daily_html = fig_daily.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+            fig_min = go.Figure()
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['activeUsers'],
+                                         name='Kullanıcı (10dk)', line=dict(color='#00CC96')))
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['sessions'],
+                                         name='Oturum (10dk)', line=dict(color='#636EFA')))
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['activeUsers_hourly'],
+                                         name='Kullanıcı (Saatlik Toplam)', line=dict(color='#00CC96', dash='dot')))
+            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['sessions_hourly'],
+                                         name='Oturum (Saatlik Toplam)', line=dict(color='#636EFA', dash='dot')))
+            fig_min.update_layout(title=f"Trafik ({title[:40]}) — 10 Dakikalık",
+                                  xaxis_title="Saat", yaxis_title="Sayı",
+                                  hovermode="x unified", xaxis=dict(tickformat='%H:%M'))
+            minutely_html = fig_min.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
 
         # Fetch remaining data
         df_sources = self.helper.get_page_sources(paths)
         df_countries = self.helper.get_page_countries(paths)
         df_cities = self.helper.get_page_cities(paths)
+
 
         # ── Sources pie chart ──
         sources_html = ""
@@ -636,7 +639,7 @@ class ReportGenerator:
                 <div class="col-4"><div class="card p-3"><h4 class="text-info fw-bold">{total_sessions:,}</h4><small class="text-muted">Oturum</small></div></div>
             </div>
 
-            {"<div class='card mb-4'><div class='card-body'>" + daily_html + "</div></div>" if daily_html else "<div class='alert alert-info'>Günlük veri bulunamadı.</div>"}
+            {"<div class='card mb-4'><div class='card-body'>" + minutely_html + "</div></div>" if minutely_html else "<div class='alert alert-info'>Dakikalık veri bulunamadı.</div>"}
 
             <div class="row">
                 <div class="col-md-6">
