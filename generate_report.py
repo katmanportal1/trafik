@@ -643,6 +643,9 @@ class ReportGenerator:
 
     # ─── MAIN GENERATOR ────────────────────────────────────
     def generate_all_reports(self):
+        # Clear all cache to force fresh API calls
+        self.helper.clear_cache()
+
         sidebar = self._create_sidebar_html()
 
         # 0. Login page
@@ -655,11 +658,10 @@ class ReportGenerator:
         # 1. Bugün (Today - Live Traffic)
         today_str = datetime.now().strftime('%Y-%m-%d')
         print(f">>> Bugün ({today_str}) - Canlı Trafik")
-        # Clear cache so today page always gets fresh data
-        self.helper.clear_cache()
         self.generate_page(today_str, "today", "Bugün (Canlı)", "bugun.html", sidebar, is_monthly=True)
 
         # 2. Son 30 Gün
+
         print(">>> Son 30 Gün (son30gun.html)")
         start_30 = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         self.generate_page(start_30, "today", "Son 30 Gün", "son30gun.html", sidebar, is_monthly=True)
