@@ -519,34 +519,54 @@ class ReportGenerator:
         # (links already set in the table above)
 
     def _generate_detail_page(self, title, paths, filename, sidebar_html, subtitle=""):
-        """Generate a detail page for an article or author with minute-level traffic, sources, geography."""
+        """Generate a detail page for an article or author with traffic, sources, geography."""
         filepath = os.path.join(self.output_dir, filename)
         plotly_static = {'responsive': True, 'scrollZoom': False, 'doubleClick': False, 'displayModeBar': False}
 
-        # Fetch filtered data from GA4
-        df_minutely = self.helper.get_page_minutely(paths)
+        from google.analytics.data_v1beta.types import FilterExpression, Filter, DateRange
+
+        # Build path filter
+        pf = self.helper._make_path_filter(paths)
+
+        # ── Aggregate totals (all-time) ──
+        df_totals = self.helper.run_report(
+            dimensions=[],
+            metrics=["screenPageViews", "activeUsers", "sessions"],
+            date_range=DateRange(start_date="2020-01-01", end_date="today"),
+            dimension_filter=pf
+        )
+        total_views = int(df_totals['screenPageViews'].iloc[0]) if not df_totals.empty else 0
+        total_users = int(df_totals['activeUsers'].iloc[0]) if not df_totals.empty else 0
+        total_sessions = int(df_totals['sessions'].iloc[0]) if not df_totals.empty else 0
+
+        # ── Daily traffic chart ──
+        df_daily = self.helper.run_report(
+            dimensions=["date"],
+            metrics=["screenPageViews", "activeUsers", "sessions"],
+            date_range=DateRange(start_date="2020-01-01", end_date="today"),
+            dimension_filter=pf
+        )
+
+        daily_html = ""
+        if not df_daily.empty:
+            df_daily['date'] = pd.to_datetime(df_daily['date'], format='%Y%m%d')
+            df_daily = df_daily.sort_values('date')
+            for col in ['screenPageViews', 'activeUsers', 'sessions']:
+                df_daily[col] = df_daily[col].astype(int)
+
+            fig_daily = go.Figure()
+            fig_daily.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['screenPageViews'],
+                                           name='Görüntüleme', line=dict(color='#17a2b8'), fill='tozeroy'))
+            fig_daily.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['activeUsers'],
+                                           name='Kullanıcı', line=dict(color='#28a745')))
+            fig_daily.update_layout(title="Günlük Trafik", xaxis_title="Tarih", yaxis_title="Sayı",
+                                    hovermode="x unified", xaxis=dict(tickformat='%d/%m/%Y'))
+            daily_html = fig_daily.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
+        # Fetch remaining data
         df_sources = self.helper.get_page_sources(paths)
         df_countries = self.helper.get_page_countries(paths)
         df_cities = self.helper.get_page_cities(paths)
-
-        # ── Minutely chart (10-min resample) ──
-        minutely_html = ""
-        if not df_minutely.empty:
-            df_minutely['time'] = pd.to_datetime(df_minutely['dateHourMinute'], format='%Y%m%d%H%M')
-            df_minutely = df_minutely.sort_values('time')
-            for col in ['activeUsers', 'sessions', 'screenPageViews', 'eventCount']:
-                df_minutely[col] = df_minutely[col].astype(int)
-            df_minutely = df_minutely.set_index('time').resample('10min').sum(numeric_only=True).reset_index()
-            df_minutely['views_hourly'] = df_minutely['screenPageViews'].rolling(window=6, min_periods=1).sum()
-
-            fig_min = go.Figure()
-            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['screenPageViews'],
-                                         name='Görüntüleme (10dk)', line=dict(color='#17a2b8')))
-            fig_min.add_trace(go.Scatter(x=df_minutely['time'], y=df_minutely['views_hourly'],
-                                         name='Saatlik Toplam', line=dict(color='#6f42c1', dash='dot')))
-            fig_min.update_layout(title="Dakikalık Trafik", xaxis_title="Zaman", yaxis_title="Görüntüleme",
-                                  hovermode="x unified", xaxis=dict(tickformat='%d/%m %H:%M'))
-            minutely_html = fig_min.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
 
         # ── Sources pie chart ──
         sources_html = ""
@@ -578,11 +598,6 @@ class ReportGenerator:
             fig_city.update_traces(textposition='outside', marker_color='#fd7e14')
             fig_city.update_layout(yaxis_title=None, height=max(300, len(df_cities) * 30), showlegend=False)
             cities_html = fig_city.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
-
-        # ── Summary stats ──
-        total_views = int(df_minutely['screenPageViews'].sum()) if not df_minutely.empty else 0
-        total_users = int(df_minutely['activeUsers'].sum()) if not df_minutely.empty else 0
-        total_sessions = int(df_minutely['sessions'].sum()) if not df_minutely.empty else 0
 
         head = """<!DOCTYPE html>
         <html lang="tr"><head>
@@ -621,7 +636,7 @@ class ReportGenerator:
                 <div class="col-4"><div class="card p-3"><h4 class="text-info fw-bold">{total_sessions:,}</h4><small class="text-muted">Oturum</small></div></div>
             </div>
 
-            {"<div class='card mb-4'><div class='card-body'>" + minutely_html + "</div></div>" if minutely_html else "<div class='alert alert-info'>Dakikalık veri bulunamadı.</div>"}
+            {"<div class='card mb-4'><div class='card-body'>" + daily_html + "</div></div>" if daily_html else "<div class='alert alert-info'>Günlük veri bulunamadı.</div>"}
 
             <div class="row">
                 <div class="col-md-6">
