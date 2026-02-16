@@ -856,55 +856,7 @@ class ReportGenerator:
                              title="Kategori Kullanıcı Sayısı", color="Users", color_continuous_scale="Greens")
         fig_group_u.update_layout(coloraxis_showscale=False)
 
-        # ── Category Details ────────────────────────────────
-        groups_html = ""
-        for i, group in enumerate(self.groups):
-            df_top = self.helper.get_grouped_top_pages(path_prefix=group['prefix'], start_date=start_date, end_date=end_date, limit=20)
-            if not df_top.empty:
-                df_top = df_top[
-                    (df_top['pagePath'] != group['prefix']) &
-                    (df_top['pagePath'] != group['prefix'] + "/")
-                ].head(20)
-                if 'click' in df_top.columns and 'file_download' in df_top.columns:
-                    df_top['totalInteractions'] = df_top['click'] + df_top['file_download']
-                else:
-                    df_top['totalInteractions'] = 0
 
-            self.helper.save_data(df_top, f"group_top_{group['name'].replace(' ', '_')}_{title.replace(' ', '_')}")
-
-            gs = group_stats[i]
-            group_scorecard = f"""
-            <div class="row mb-4">
-                <div class="col-md-4"><div class="metric-box border-start border-4 border-primary"><div class="metric-label">Görüntülenme</div><div class="metric-value text-primary">{gs['Views']:,}</div></div></div>
-                <div class="col-md-4"><div class="metric-box border-start border-4 border-success"><div class="metric-label">Kullanıcı</div><div class="metric-value text-success">{gs['Users']:,}</div></div></div>
-                <div class="col-md-4"><div class="metric-box border-start border-4 border-warning"><div class="metric-label">Oturum</div><div class="metric-value text-warning">{gs['Sessions']:,}</div></div></div>
-            </div>
-            """
-
-            col_class = "col-md-12" if is_monthly else "col-md-6"
-            monthly_html = ""
-            if not is_monthly:
-                df_monthly = self.helper.get_grouped_monthly_pages(path_prefix=group['prefix'], start_date=start_date, end_date=end_date)
-                if not df_monthly.empty:
-                    df_monthly = df_monthly[(df_monthly['pagePath'] != group['prefix']) & (df_monthly['pagePath'] != group['prefix'] + "/")]
-                    if 'click' in df_monthly.columns and 'file_download' in df_monthly.columns:
-                        df_monthly['totalInteractions'] = df_monthly['click'] + df_monthly['file_download']
-                    else:
-                        df_monthly['totalInteractions'] = 0
-                monthly_html = f'<div class="col-md-6"><h5>Aylık En İyiler</h5>{self._monthly_html(df_monthly, top_n=5)}</div>'
-
-            groups_html += f"""
-            <div class="card mt-4">
-                <div class="card-header bg-primary text-white">{group['name']} Analizi</div>
-                <div class="card-body">
-                    {group_scorecard}
-                    <div class="row">
-                        <div class="{col_class}"><h5>En Çok Okunan</h5>{self._df_to_table(df_top)}</div>
-                        {monthly_html}
-                    </div>
-                </div>
-            </div>
-            """
 
         # ── Downloads ───────────────────────────────────────
         downloads_html = ""
@@ -1039,8 +991,7 @@ class ReportGenerator:
                     </div>
                 </div>
 
-                <h3 class="mt-5 border-bottom pb-2">Kategori Detayları</h3>
-                {groups_html}
+
 
                 <div class="card mt-4">
                     <div class="card-header bg-dark text-white">Dosya İndirmeleri</div>
