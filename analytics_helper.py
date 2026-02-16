@@ -57,6 +57,13 @@ class AnalyticsHelper:
         except Exception as e:
             print(f"Warning: Failed to save cache {path}: {e}")
 
+    def clear_cache(self):
+        """Clear all cached data to force fresh API calls."""
+        import glob
+        for f in glob.glob(os.path.join(self.cache_dir, "*.pkl")):
+            os.remove(f)
+        print("  [CACHE] Tüm önbellek temizlendi")
+
     def save_data(self, df, name):
         """Save dataframe to both Excel and Parquet in exported_data/."""
         try:

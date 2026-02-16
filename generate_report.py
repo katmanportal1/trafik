@@ -19,6 +19,12 @@ class ReportGenerator:
         self.output_dir = "dashboard"
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # Load crawled index for author lookup
+        self.index_df = None
+        index_path = os.path.join(os.path.dirname(__file__), "katman_crawled_index.xlsx")
+        if os.path.exists(index_path):
+            self.index_df = pd.read_excel(index_path)
+
         # Katman Portal category groups
         self.groups = [
             {"name": "Güncel", "prefix": "/category/guncel"},
@@ -649,6 +655,8 @@ class ReportGenerator:
         # 1. Bugün (Today - Live Traffic)
         today_str = datetime.now().strftime('%Y-%m-%d')
         print(f">>> Bugün ({today_str}) - Canlı Trafik")
+        # Clear cache so today page always gets fresh data
+        self.helper.clear_cache()
         self.generate_page(today_str, "today", "Bugün (Canlı)", "bugun.html", sidebar, is_monthly=True)
 
         # 2. Son 30 Gün
@@ -854,7 +862,45 @@ class ReportGenerator:
             fig_top_pages = go.Figure()
 
         top_pages_chart_html = fig_top_pages.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
-        top_pages_table_html = self._df_to_table(df_top_pages[['pageTitle', 'screenPageViews']]) if not df_top_pages.empty else "<p class='text-muted'>Veri yok.</p>"
+        # ── Enriched Top Pages Table ─────────────────────────
+        if not df_top_pages.empty and 'pagePath' in df_top_pages.columns:
+            # Build author lookup from crawled index
+            author_map = {}
+            if self.index_df is not None and 'path' in self.index_df.columns and 'author' in self.index_df.columns:
+                for _, r in self.index_df.dropna(subset=['author']).iterrows():
+                    p = str(r['path']).strip().rstrip('/')
+                    author_map[p] = r['author']
+
+            rows_html = ""
+            for i, (_, row) in enumerate(df_top_pages.iterrows(), 1):
+                page_title = str(row.get('pageTitle', ''))
+                clean_title = page_title.replace(' - Katman Portal', '').replace(' – Katman Portal', '').strip()
+                page_path = str(row.get('pagePath', '')).strip().rstrip('/')
+                views = int(row['screenPageViews']) if pd.notnull(row['screenPageViews']) else 0
+
+                # Find author
+                author = author_map.get(page_path, '')
+
+                # Build slug link
+                slug = page_path.strip('/').split('/')[-1] if page_path else ''
+                link_html = f'<a href="yazi_{slug}.html" class="text-decoration-none">{clean_title}</a>' if slug and author else clean_title
+
+                rows_html += f"""<tr>
+                    <td>{i}</td>
+                    <td>{link_html}</td>
+                    <td>{author}</td>
+                    <td class="text-end fw-bold">{views:,}</td>
+                </tr>"""
+
+            top_pages_table_html = f"""<div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr><th>#</th><th>Yazı</th><th>Yazar</th><th class="text-end">Görüntüleme</th></tr>
+                </thead>
+                <tbody>{rows_html}</tbody>
+            </table></div>"""
+        else:
+            top_pages_table_html = "<p class='text-muted'>Veri yok.</p>"
 
         # ── Pre-render other Plotly charts ──
         trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
