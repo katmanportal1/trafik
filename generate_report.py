@@ -826,36 +826,6 @@ class ReportGenerator:
 
         legend_table = "<div class='mb-3'><small class='text-muted'>Organic Search (Arama), Direct (Doğrudan), Social (Sosyal), Referral (Link).</small></div>"
 
-        # ── Subgroup Analysis ───────────────────────────────
-        from google.analytics.data_v1beta.types import FilterExpression, Filter, DateRange
-
-        group_stats = []
-        for group in self.groups:
-            path_filter = FilterExpression(
-                filter=Filter(field_name="pagePath",
-                              string_filter=Filter.StringFilter(
-                                  match_type=Filter.StringFilter.MatchType.BEGINS_WITH,
-                                  value=group['prefix'])))
-            df_total = self.helper.run_report(
-                dimensions=[], metrics=["sessions", "activeUsers", "screenPageViews"],
-                date_range=DateRange(start_date=start_date, end_date=end_date),
-                dimension_filter=path_filter)
-
-            sessions = int(df_total['sessions'].iloc[0]) if not df_total.empty else 0
-            users = int(df_total['activeUsers'].iloc[0]) if not df_total.empty else 0
-            views = int(df_total['screenPageViews'].iloc[0]) if not df_total.empty else 0
-            group_stats.append({"Group": group['name'], "Sessions": sessions, "Users": users, "Views": views})
-
-        self.helper.save_data(pd.DataFrame(group_stats), f"groups_{title.replace(' ', '_')}")
-
-        df_gs = pd.DataFrame(group_stats).sort_values("Sessions", ascending=True)
-        fig_group_s = px.bar(df_gs, x="Sessions", y="Group", orientation='h', text="Sessions",
-                             title="Kategori Toplam Ziyaret", color="Sessions", color_continuous_scale="Blues")
-        fig_group_s.update_layout(coloraxis_showscale=False)
-        fig_group_u = px.bar(df_gs, x="Users", y="Group", orientation='h', text="Users",
-                             title="Kategori Kullanıcı Sayısı", color="Users", color_continuous_scale="Greens")
-        fig_group_u.update_layout(coloraxis_showscale=False)
-
 
 
         # ── Downloads ───────────────────────────────────────
@@ -890,8 +860,7 @@ class ReportGenerator:
         trend_html = fig_trend.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
         world_html = fig_world.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_cfg)  # Map stays interactive
         cities_html_chart = fig_cities.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
-        group_s_html = fig_group_s.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
-        group_u_html = fig_group_u.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
+
         source_html = fig_source.to_html(full_html=False, include_plotlyjs='cdn', config=plotly_static)
 
         # ── HTML Assembly ───────────────────────────────────
@@ -975,10 +944,7 @@ class ReportGenerator:
                     <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{cities_html_chart}</div></div></div>
                 </div>
 
-                <div class="row g-2">
-                    <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{group_s_html}</div></div></div>
-                    <div class="col-12 col-md-6"><div class="card chart-static"><div class="card-body">{group_u_html}</div></div></div>
-                </div>
+
 
                 <div class="card chart-static"><div class="card-body">{legend_table}{source_html}</div></div>
 
