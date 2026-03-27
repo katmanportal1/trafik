@@ -3,8 +3,6 @@ Katman Portal - GA4 Dashboard Generator
 Generates HTML dashboard pages with Plotly charts and Bootstrap UI.
 Saves all data to exported_data/ before generating HTML.
 """
-import sys
-sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -493,7 +491,7 @@ class ReportGenerator:
         for a in author_stats:
             for art in a["articles"]:
                 art_filename = f"yazi_{art['slug']}.html"
-                print(f"     -> Yazi: {art['title'][:50]}...")
+                print(f"     → Yazı: {art['title'][:50]}...")
                 self._generate_detail_page(
                     title=art["title"],
                     paths=art["path"],
@@ -508,7 +506,7 @@ class ReportGenerator:
                 continue
             author_paths = [art["path"] for art in a["articles"]]
             author_filename = f"yazar_{a['slug']}.html"
-            print(f"     -> Yazar: {a['name']}")
+            print(f"     → Yazar: {a['name']}")
             self._generate_detail_page(
                 title=f"{a['name']} - Tüm Yazılar",
                 paths=author_paths,
@@ -664,7 +662,7 @@ class ReportGenerator:
     # ─── MAIN GENERATOR ────────────────────────────────────
     def generate_all_reports(self):
         # Clear all cache to force fresh API calls
-        # self.helper.clear_cache()  # Devre disi: kayitli veriyi kullan
+        self.helper.clear_cache()
 
         sidebar = self._create_sidebar_html()
 
